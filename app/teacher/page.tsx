@@ -2,359 +2,67 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { supabase } from "../../lib/supabase";
+
+type Question = { id: number; text: string; options: string[]; answer: string; explanation: string };
+
+const emptyQuestion = (id: number): Question => ({ id, text: "", options: ["", "", "", ""], answer: "A", explanation: "" });
 
 export default function TeacherPage() {
-  const [testName, setTestName] = useState("");
+  const [title, setTitle] = useState("Present Simple – Practice 01");
+  const [className, setClassName] = useState("TOEIC Foundation");
+  const [duration, setDuration] = useState("20");
+  const [questions, setQuestions] = useState<Question[]>([
+    { id: 1, text: "The manager _____ the weekly report every Friday.", options: ["review", "reviews", "reviewing", "reviewed"], answer: "B", explanation: "A singular third-person subject takes a verb ending in -s in the present simple." },
+    { id: 2, text: "Our employees _____ their ID cards when entering the building.", options: ["wear", "wears", "wearing", "wore"], answer: "A", explanation: "The plural subject employees takes the base form of the verb." },
+  ]);
 
-  const [listeningFile, setListeningFile] = useState<File | null>(null);
-  const [questionsFile, setQuestionsFile] = useState<File | null>(null);
-  const [answerFile, setAnswerFile] = useState<File | null>(null);
-
-  const [creating, setCreating] = useState(false);
-  const [message, setMessage] = useState("");
-  const [createdLink, setCreatedLink] = useState("");
-
-  function createSlug(text: string) {
-    return (
-      text
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/đ/g, "d")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "") +
-      "-" +
-      Date.now()
-    );
-  }
-
-  async function handleCreateTest() {
-    if (!testName.trim()) {
-      setMessage("Please enter a test name.");
-      return;
-    }
-
-    try {
-      setCreating(true);
-      setMessage("");
-      setCreatedLink("");
-
-      const slug = createSlug(testName);
-
-      const { data, error } = await supabase
-        .from("tests")
-        .insert({
-          title: testName.trim(),
-          slug: slug,
-          listening_audio_url: null,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error(error);
-        setMessage("Could not create the test. Please try again.");
-        return;
-      }
-
-      const link = `${window.location.origin}/test/${data.slug}`;
-
-      setCreatedLink(link);
-
-      setMessage(
-        "Test created successfully. The test is now saved in Supabase."
-      );
-    } catch (error) {
-      console.error(error);
-
-      setMessage("Something went wrong while creating the test.");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  function resetForm() {
-    setTestName("");
-    setListeningFile(null);
-    setQuestionsFile(null);
-    setAnswerFile(null);
-    setMessage("");
-    setCreatedLink("");
-
-    const audioInput = document.getElementById(
-      "listening-file"
-    ) as HTMLInputElement | null;
-
-    const questionsInput = document.getElementById(
-      "questions-file"
-    ) as HTMLInputElement | null;
-
-    const answerInput = document.getElementById(
-      "answer-file"
-    ) as HTMLInputElement | null;
-
-    if (audioInput) audioInput.value = "";
-    if (questionsInput) questionsInput.value = "";
-    if (answerInput) answerInput.value = "";
-  }
-
-  async function copyLink() {
-    if (!createdLink) return;
-
-    await navigator.clipboard.writeText(createdLink);
-
-    setMessage("Test link copied.");
-  }
+  const updateQuestion = (id: number, patch: Partial<Question>) => setQuestions(qs => qs.map(q => q.id === id ? { ...q, ...patch } : q));
+  const updateOption = (id: number, index: number, value: string) => setQuestions(qs => qs.map(q => q.id === id ? { ...q, options: q.options.map((o, i) => i === index ? value : o) } : q));
+  const addQuestion = () => setQuestions(qs => [...qs, emptyQuestion(Date.now())]);
+  const removeQuestion = (id: number) => setQuestions(qs => qs.length > 1 ? qs.filter(q => q.id !== id) : qs);
 
   return (
-    <main className="min-h-screen bg-[#f7f8f6]">
-      {/* HEADER */}
-
+    <main className="min-h-screen bg-[#f7f8f6] text-slate-900">
       <header className="border-b border-[#dfe6e1] bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Image
-            src="/logo.png"
-            alt="Louis The Instructor"
-            width={229}
-            height={138}
-            priority
-            className="h-auto w-[135px] md:w-[150px]"
-          />
-
-          <div className="rounded-full border border-[#d4e0d8] bg-[#f4f8f5] px-4 py-2 text-sm font-semibold text-[#145c37]">
-            Teacher Dashboard
-          </div>
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <Image src="/logo.png" alt="Louis The Instructor" width={229} height={138} priority className="h-auto w-[145px]" />
+          <div className="flex items-center gap-3"><span className="hidden text-sm text-slate-500 sm:block">Teacher workspace</span><div className="rounded-full bg-[#edf6f0] px-4 py-2 text-sm font-bold text-[#145c37]">Draft</div></div>
         </div>
       </header>
 
-      {/* PAGE CONTENT */}
-
-      <section className="mx-auto max-w-4xl px-6 py-12">
-        <div className="mb-8">
-          <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#145c37]">
-            TOEIC Test Management
-          </p>
-
-          <h1 className="mt-2 text-4xl font-black text-slate-950">
-            Create a new test
-          </h1>
-
-          <p className="mt-3 max-w-2xl text-slate-500">
-            Upload your TOEIC materials and create an online test for your
-            students.
-          </p>
+      <section className="mx-auto max-w-7xl px-5 py-9 md:px-6">
+        <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+          <div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#145c37]">Assignment Builder</p><h1 className="mt-2 text-3xl font-black md:text-4xl">Create grammar practice</h1><p className="mt-2 text-slate-500">Build the test, check the questions, then publish one link to your students.</p></div>
+          <div className="flex gap-3"><button className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold text-slate-700">Save draft</button><button className="rounded-xl bg-[#145c37] px-6 py-3 font-bold text-white shadow-sm hover:bg-[#0f4b2d]">Publish test</button></div>
         </div>
 
-        {/* CREATE TEST CARD */}
-
-        <div className="rounded-3xl border border-[#dfe6e1] bg-white p-8 shadow-sm">
-          <div className="space-y-7">
-            {/* TEST NAME */}
-
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">
-                Test name
-              </label>
-
-              <input
-                type="text"
-                value={testName}
-                onChange={(e) => setTestName(e.target.value)}
-                placeholder="Example: TOEIC Practice Test 01"
-                className="w-full rounded-xl border border-slate-300 px-4 py-4 text-slate-900 outline-none transition focus:border-[#145c37] focus:ring-4 focus:ring-[#e4efe8]"
-              />
-            </div>
-
-            {/* LISTENING AUDIO */}
-
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">
-                Listening audio
-              </label>
-
-              <p className="mb-3 text-sm text-slate-500">
-                Upload the MP3 file used for the Listening section.
-              </p>
-
-              <input
-                id="listening-file"
-                type="file"
-                accept=".mp3,audio/*"
-                onChange={(e) =>
-                  setListeningFile(e.target.files?.[0] || null)
-                }
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-4 text-slate-700"
-              />
-
-              {listeningFile && (
-                <div className="mt-3 rounded-xl bg-[#f4f8f5] px-4 py-3 text-sm text-[#145c37]">
-                  ✓ {listeningFile.name}
-                </div>
-              )}
-            </div>
-
-            {/* QUESTIONS FILE */}
-
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">
-                Questions file
-              </label>
-
-              <p className="mb-3 text-sm text-slate-500">
-                Upload the TOEIC questions as an Excel or CSV file.
-              </p>
-
-              <input
-                id="questions-file"
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(e) =>
-                  setQuestionsFile(e.target.files?.[0] || null)
-                }
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-4 text-slate-700"
-              />
-
-              {questionsFile && (
-                <div className="mt-3 rounded-xl bg-[#f4f8f5] px-4 py-3 text-sm text-[#145c37]">
-                  ✓ {questionsFile.name}
-                </div>
-              )}
-            </div>
-
-            {/* ANSWER KEY */}
-
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">
-                Answer key
-              </label>
-
-              <p className="mb-3 text-sm text-slate-500">
-                Upload the correct answers for automatic scoring.
-              </p>
-
-              <input
-                id="answer-file"
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(e) =>
-                  setAnswerFile(e.target.files?.[0] || null)
-                }
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-4 text-slate-700"
-              />
-
-              {answerFile && (
-                <div className="mt-3 rounded-xl bg-[#f4f8f5] px-4 py-3 text-sm text-[#145c37]">
-                  ✓ {answerFile.name}
-                </div>
-              )}
-            </div>
-
-            {/* MATERIAL STATUS */}
-
-            <div className="rounded-2xl bg-[#f4f8f5] p-5">
-              <p className="font-bold text-[#145c37]">Test materials</p>
-
-              <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                <div
-                  className={
-                    testName.trim()
-                      ? "font-semibold text-[#145c37]"
-                      : "text-slate-400"
-                  }
-                >
-                  {testName.trim() ? "✓" : "○"} Test information
-                </div>
-
-                <div
-                  className={
-                    listeningFile
-                      ? "font-semibold text-[#145c37]"
-                      : "text-slate-400"
-                  }
-                >
-                  {listeningFile ? "✓" : "○"} Listening MP3
-                </div>
-
-                <div
-                  className={
-                    questionsFile
-                      ? "font-semibold text-[#145c37]"
-                      : "text-slate-400"
-                  }
-                >
-                  {questionsFile ? "✓" : "○"} Questions
-                </div>
-
-                <div
-                  className={
-                    answerFile
-                      ? "font-semibold text-[#145c37]"
-                      : "text-slate-400"
-                  }
-                >
-                  {answerFile ? "✓" : "○"} Answer key
-                </div>
+        <div className="grid gap-7 lg:grid-cols-[1fr_310px]">
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-[#dfe6e1] bg-white p-6 shadow-sm md:p-7">
+              <h2 className="text-lg font-black">Test information</h2>
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <label className="md:col-span-2"><span className="mb-2 block text-sm font-bold">Test title</span><input value={title} onChange={e=>setTitle(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3.5 outline-none focus:border-[#145c37]" /></label>
+                <label><span className="mb-2 block text-sm font-bold">Class / group</span><input value={className} onChange={e=>setClassName(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3.5 outline-none focus:border-[#145c37]" /></label>
+                <label><span className="mb-2 block text-sm font-bold">Time limit</span><div className="relative"><input type="number" min="1" value={duration} onChange={e=>setDuration(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3.5 pr-20 outline-none focus:border-[#145c37]"/><span className="absolute right-4 top-3.5 text-sm text-slate-400">minutes</span></div></label>
               </div>
             </div>
 
-            {/* MESSAGE */}
+            <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">Questions</h2><p className="text-sm text-slate-500">{questions.length} multiple-choice questions</p></div><button onClick={addQuestion} className="rounded-xl border border-[#145c37] bg-white px-4 py-2.5 text-sm font-bold text-[#145c37]">+ Add question</button></div>
 
-            {message && (
-              <div className="rounded-2xl border border-[#d7e6dc] bg-[#f4f8f5] p-4 text-sm font-medium text-[#145c37]">
-                {message}
-              </div>
-            )}
-
-            {/* CREATED LINK */}
-
-            {createdLink && (
-              <div className="rounded-2xl border border-[#d7e6dc] bg-white p-5">
-                <p className="text-sm font-bold text-slate-900">
-                  Student test link
-                </p>
-
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                  <input
-                    value={createdLink}
-                    readOnly
-                    className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-700"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={copyLink}
-                    className="rounded-xl border border-[#145c37] px-5 py-3 text-sm font-bold text-[#145c37] transition hover:bg-[#f4f8f5]"
-                  >
-                    Copy Link
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* BUTTONS */}
-
-            <button
-              type="button"
-              onClick={handleCreateTest}
-              disabled={!testName.trim() || creating}
-              className="w-full rounded-xl bg-[#145c37] py-4 text-base font-bold text-white transition hover:bg-[#0f4b2d] disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {creating ? "Creating Test..." : "Create Test"}
-            </button>
-
-            <button
-              type="button"
-              onClick={resetForm}
-              className="w-full rounded-xl border border-slate-300 bg-white py-4 text-base font-bold text-slate-700 transition hover:bg-slate-50"
-            >
-              Clear Form
-            </button>
-
-            <p className="text-center text-xs text-slate-400">
-              Louis The Instructor · TOEIC Online Testing System
-            </p>
+            {questions.map((q, qi) => <article key={q.id} className="rounded-3xl border border-[#dfe6e1] bg-white p-6 shadow-sm md:p-7">
+              <div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#145c37] text-sm font-black text-white">{qi+1}</span><h3 className="font-black">Question {qi+1}</h3></div><button onClick={()=>removeQuestion(q.id)} className="text-sm font-bold text-slate-400 hover:text-red-600">Remove</button></div>
+              <textarea value={q.text} onChange={e=>updateQuestion(q.id,{text:e.target.value})} rows={2} placeholder="Type your question here..." className="mt-5 w-full resize-none rounded-xl border border-slate-300 px-4 py-3.5 font-medium outline-none focus:border-[#145c37]" />
+              <div className="mt-4 grid gap-3 md:grid-cols-2">{q.options.map((option, oi) => { const letter=String.fromCharCode(65+oi); return <label key={letter} className={`flex items-center gap-3 rounded-xl border p-3 ${q.answer===letter?'border-[#87b99a] bg-[#f2f8f4]':'border-slate-200'}`}><input type="radio" name={`answer-${q.id}`} checked={q.answer===letter} onChange={()=>updateQuestion(q.id,{answer:letter})} className="accent-[#145c37]"/><span className="font-black text-[#145c37]">{letter}</span><input value={option} onChange={e=>updateOption(q.id,oi,e.target.value)} placeholder={`Option ${letter}`} className="min-w-0 flex-1 bg-transparent outline-none"/></label>})}</div>
+              <label className="mt-4 block"><span className="mb-2 block text-sm font-bold text-slate-600">Explanation <span className="font-normal text-slate-400">(optional)</span></span><input value={q.explanation} onChange={e=>updateQuestion(q.id,{explanation:e.target.value})} placeholder="Explain why the answer is correct..." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#145c37]"/></label>
+            </article>)}
+            <button onClick={addQuestion} className="w-full rounded-2xl border-2 border-dashed border-[#b9d2c2] bg-[#f8fbf9] py-5 font-bold text-[#145c37] hover:bg-[#f0f7f2]">+ Add another question</button>
           </div>
+
+          <aside className="space-y-5 lg:sticky lg:top-6 lg:self-start">
+            <div className="rounded-3xl border border-[#dfe6e1] bg-white p-6 shadow-sm"><p className="text-xs font-black uppercase tracking-[0.16em] text-[#145c37]">Test summary</p><h3 className="mt-3 text-lg font-black">{title || "Untitled test"}</h3><p className="mt-1 text-sm text-slate-500">{className || "No class selected"}</p><div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><div className="text-2xl font-black">{questions.length}</div><div className="text-xs text-slate-500">Questions</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-2xl font-black">{duration || "—"}</div><div className="text-xs text-slate-500">Minutes</div></div></div></div>
+            <div className="rounded-3xl border border-[#d7e6dc] bg-[#edf6f0] p-6"><h3 className="font-black text-[#145c37]">Student experience</h3><p className="mt-2 text-sm leading-6 text-slate-600">Students open one link, enter their full name, answer the questions and submit. No student account required.</p></div>
+            <div className="rounded-3xl border border-[#dfe6e1] bg-white p-6"><h3 className="font-black">Import questions</h3><p className="mt-2 text-sm leading-6 text-slate-500">Excel / CSV import will be connected after the builder format is approved.</p><button className="mt-4 w-full rounded-xl border border-slate-300 py-3 text-sm font-bold text-slate-700">Upload Excel / CSV</button></div>
+          </aside>
         </div>
       </section>
     </main>
