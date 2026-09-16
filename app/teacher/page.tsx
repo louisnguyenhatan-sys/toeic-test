@@ -2,16 +2,22 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
+import { supabase } from "../../lib/supabase";
 
-type Stage = "upload" | "review";
+type Stage = "upload" | "review" | "published";
 type Question = { id: number; text: string; options: string[]; answer: string };
 
 const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file); });
 
+function createSlug(text: string) {
+  const base = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "practice-test";
+  return `${base}-${Date.now()}`;
+}
+
 export default function TeacherPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(""); const [files, setFiles] = useState<File[]>([]); const [answerKey, setAnswerKey] = useState("");
-  const [stage, setStage] = useState<Stage>("upload"); const [questions, setQuestions] = useState<Question[]>([]); const [loading, setLoading] = useState(false); const [error, setError] = useState("");
+  const [stage, setStage] = useState<Stage>("upload"); const [questions, setQuestions] = useState<Question[]>([]); const [loading, setLoading] = useState(false); const [publishing, setPublishing] = useState(false); const [error, setError] = useState(""); const [createdLink, setCreatedLink] = useState(""); const [copied, setCopied] = useState(false);
   function addFiles(list: FileList | null) { if (list) setFiles(old => [...old, ...Array.from(list)]); }
   async function extractQuestions() {
     if (!files.length || !answerKey.trim()) return; setLoading(true); setError("");
@@ -22,17 +28,31 @@ export default function TeacherPage() {
       setQuestions((data.questions || []).map((q:any,i:number)=>({id:i+1,text:q.text || "",options:Array.isArray(q.options)?q.options:["","","",""],answer:q.answer || "A"}))); setStage("review");
     } catch(e) { setError(e instanceof Error ? e.message : "Could not read images."); } finally { setLoading(false); }
   }
+  async function publishTest() {
+    if (!title.trim()) { setError("Please enter a test title before publishing."); setStage("upload"); return; }
+    if (!questions.length) return;
+    setPublishing(true); setError("");
+    try {
+      const slug = createSlug(title);
+      const { data, error: insertError } = await supabase.from("tests").insert({ title: title.trim(), slug, listening_audio_url: null }).select("id, slug").single();
+      if (insertError) throw insertError;
+      const payload = { title: title.trim(), questions: questions.map(q => ({ number:q.id, text:q.text, options:q.options, answer:q.answer })) };
+      localStorage.setItem(`louis-test-${data.slug}`, JSON.stringify(payload));
+      setCreatedLink(`${window.location.origin}/test/${data.slug}`); setStage("published");
+    } catch(e) { setError(e instanceof Error ? e.message : "Could not publish test."); } finally { setPublishing(false); }
+  }
+  async function copyLink() { if (!createdLink) return; await navigator.clipboard.writeText(createdLink); setCopied(true); setTimeout(()=>setCopied(false),1500); }
   return <main className="min-h-screen bg-[#f7f8f6] text-slate-900">
     <header className="border-b border-[#dfe6e1] bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4"><Image src="/logo.png" alt="Louis The Instructor" width={229} height={138} priority className="h-auto w-[140px]"/><div className="rounded-full bg-[#edf6f0] px-4 py-2 text-sm font-bold text-[#145c37]">Teacher Dashboard</div></div></header>
     <section className="mx-auto max-w-5xl px-5 py-10"><p className="text-xs font-black uppercase tracking-[.2em] text-[#145c37]">Create New Test</p><h1 className="mt-2 text-3xl font-black md:text-4xl">Turn exercise images into an online test.</h1><p className="mt-3 max-w-2xl text-slate-500">Upload exercise images and the answer key. AI reads the questions, then you review them before publishing.</p>
-      <div className="mt-8 flex gap-2 text-sm font-bold">{["1  Upload","2  Review","3  Publish"].map((x,i)=><div key={x} className={`rounded-full px-4 py-2 ${i===(stage==="upload"?0:1)?"bg-[#145c37] text-white":"bg-white text-slate-400"}`}>{x}</div>)}</div>
+      <div className="mt-8 flex gap-2 text-sm font-bold">{["1  Upload","2  Review","3  Publish"].map((x,i)=>{const active=stage==="upload"?0:stage==="review"?1:2;return <div key={x} className={`rounded-full px-4 py-2 ${i===active?"bg-[#145c37] text-white":"bg-white text-slate-400"}`}>{x}</div>})}</div>
       {stage==="upload" ? <div className="mt-6 space-y-6">
         <div className="rounded-3xl border border-[#dfe6e1] bg-white p-7 shadow-sm"><label><span className="mb-2 block text-sm font-black">Test title</span><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Present Simple – Practice 01" className="w-full rounded-xl border border-slate-300 px-4 py-4 outline-none focus:border-[#145c37]"/></label></div>
         <div className="rounded-3xl border border-[#dfe6e1] bg-white p-7 shadow-sm"><h2 className="text-xl font-black">Upload exercise images</h2><p className="mt-2 text-sm text-slate-500">JPG, PNG or WEBP. Select several pages in question order.</p><input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={e=>addFiles(e.target.files)}/><button onClick={()=>inputRef.current?.click()} className="mt-5 w-full rounded-2xl border-2 border-dashed border-[#9fc3ab] bg-[#f7fbf8] py-9 font-black text-[#145c37]">+ Choose exercise images</button>{files.map((f,i)=><div key={f.name+i} className="mt-2 flex justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm"><b>{i+1}. {f.name}</b><button onClick={()=>setFiles(files.filter((_,x)=>x!==i))} className="text-slate-400">Remove</button></div>)}</div>
         <div className="rounded-3xl border border-[#dfe6e1] bg-white p-7 shadow-sm"><h2 className="text-xl font-black">Answer key</h2><p className="mt-2 text-sm text-slate-500">Example: 1B 2A 3D 4C or B, A, D, C.</p><textarea value={answerKey} onChange={e=>setAnswerKey(e.target.value)} rows={4} placeholder="1B 2A 3D 4C 5A ..." className="mt-4 w-full rounded-xl border border-slate-300 px-4 py-4 outline-none focus:border-[#145c37]"/></div>
         {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
         <button disabled={!files.length||!answerKey.trim()||loading} onClick={extractQuestions} className="w-full rounded-xl bg-[#145c37] py-4 font-black text-white disabled:bg-slate-300">{loading?"Reading images...":"Read images & create questions →"}</button>
-      </div> : <div className="mt-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-2xl font-black">Review extracted questions</h2><p className="text-sm text-slate-500">Check AI extraction before publishing.</p></div><button onClick={()=>setStage("upload")} className="rounded-xl border bg-white px-4 py-2 font-bold">← Back</button></div><div className="space-y-4">{questions.map(q=><div key={q.id} className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex justify-between"><b>Question {q.id}</b><span className="rounded-full bg-[#edf6f0] px-3 py-1 text-sm font-black text-[#145c37]">Answer {q.answer}</span></div><textarea value={q.text} onChange={e=>setQuestions(old=>old.map(x=>x.id===q.id?{...x,text:e.target.value}:x))} rows={2} className="mt-4 w-full rounded-xl border px-4 py-3"/><div className="mt-3 grid gap-2 sm:grid-cols-2">{q.options.map((o,i)=><input key={i} value={o} onChange={e=>setQuestions(old=>old.map(x=>x.id===q.id?{...x,options:x.options.map((v,j)=>j===i?e.target.value:v)}:x))} className={`rounded-xl border px-4 py-3 ${q.answer===String.fromCharCode(65+i)?"border-[#87b99a] bg-[#f2f8f4]":""}`}/>)}</div></div>)}</div><button className="mt-6 w-full rounded-xl bg-[#145c37] py-4 font-black text-white">Publish test & create student link →</button></div>}
+      </div> : stage==="review" ? <div className="mt-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-2xl font-black">Review extracted questions</h2><p className="text-sm text-slate-500">Check AI extraction before publishing.</p></div><button onClick={()=>setStage("upload")} className="rounded-xl border bg-white px-4 py-2 font-bold">← Back</button></div><div className="space-y-4">{questions.map(q=><div key={q.id} className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex justify-between"><b>Question {q.id}</b><span className="rounded-full bg-[#edf6f0] px-3 py-1 text-sm font-black text-[#145c37]">Answer {q.answer}</span></div><textarea value={q.text} onChange={e=>setQuestions(old=>old.map(x=>x.id===q.id?{...x,text:e.target.value}:x))} rows={2} className="mt-4 w-full rounded-xl border px-4 py-3"/><div className="mt-3 grid gap-2 sm:grid-cols-2">{q.options.map((o,i)=><input key={i} value={o} onChange={e=>setQuestions(old=>old.map(x=>x.id===q.id?{...x,options:x.options.map((v,j)=>j===i?e.target.value:v)}:x))} className={`rounded-xl border px-4 py-3 ${q.answer===String.fromCharCode(65+i)?"border-[#87b99a] bg-[#f2f8f4]":""}`}/>)}</div></div>)}</div>{error&&<div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}<button disabled={publishing} onClick={publishTest} className="mt-6 w-full rounded-xl bg-[#145c37] py-4 font-black text-white disabled:bg-slate-300">{publishing?"Publishing...":"Publish test & create student link →"}</button></div> : <div className="mt-6 rounded-3xl border border-[#cfe2d5] bg-white p-8 shadow-sm"><div className="mx-auto max-w-2xl text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#edf6f0] text-2xl text-[#145c37]">✓</div><h2 className="mt-4 text-3xl font-black">Test published</h2><p className="mt-2 text-slate-500">Send this link to your students.</p><div className="mt-6 flex flex-col gap-3 sm:flex-row"><input readOnly value={createdLink} className="min-w-0 flex-1 rounded-xl border bg-slate-50 px-4 py-3 text-sm"/><button onClick={copyLink} className="rounded-xl border border-[#145c37] px-5 py-3 font-bold text-[#145c37]">{copied?"Copied ✓":"Copy link"}</button></div><a href={createdLink} className="mt-4 inline-block font-bold text-[#145c37] underline">Open student test →</a></div></div>}
     </section>
   </main>;
 }
